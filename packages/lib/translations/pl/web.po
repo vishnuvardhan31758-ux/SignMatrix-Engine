@@ -90,12 +90,16 @@ msgid "{0, plural, one {{1} of # row selected.} other {{2} of # rows selected.}}
 msgstr "{0, plural, one {Zaznaczono {1} z # wiersza.} few {Zaznaczono {2} z # wierszy.} many {Zaznaczono {2} z # wierszy.} other {Zaznaczono {2} z # wierszy.}}"
 
 #. placeholder {0}: Math.abs(remaningLength)
+#. placeholder {0}: field.value.length - characterLimit
+#. placeholder {0}: text.length - characterLimit
 #: apps/remix/app/components/dialogs/public-profile-template-manage-dialog.tsx
+#: apps/remix/app/components/dialogs/sign-field-text-dialog.tsx
+#: apps/remix/app/components/dialogs/sign-field-text-dialog.tsx
 #: apps/remix/app/components/forms/public-profile-form.tsx
 msgid "{0, plural, one {# character over the limit} other {# characters over the limit}}"
 msgstr "{0, plural, one {Przekroczono # znak} few {Przekroczono # znaki} many {Przekroczono # znaków} other {Przekroczono # znaków}}"
 
-#. placeholder {0}: fieldMeta?.characterLimit - (field.value?.length ?? 0)
+#. placeholder {0}: characterLimit - field.value.length
 #: apps/remix/app/components/dialogs/sign-field-text-dialog.tsx
 msgid "{0, plural, one {# character remaining} other {# characters remaining}}"
 msgstr "{0, plural, one {Pozostał # znak} few {Pozostały # znaki} many {Pozostało # znaków} other {Pozostało # znaków}}"
@@ -851,8 +855,8 @@ msgid "<0>Account management:</0> Modify your account settings, permissions, and
 msgstr "<0>Zarządzanie kontem:</0> Zmienianie ustawień konta i uprawnień"
 
 #: packages/ui/components/document/document-visibility-select.tsx
-msgid "<0>Admins only</0> - Only admins can access and view the document"
-msgstr "<0>Tylko dla administratorów</0> – Tylko administratorzy mogą uzyskać dostęp do dokumentu i go wyświetlić"
+msgid "<0>Admins only</0> - Visible to you and team admins."
+msgstr ""
 
 #: apps/remix/app/routes/_unauthenticated+/organisation.sso.confirmation.$token.tsx
 msgid "<0>Data access:</0> Access all data associated with your account"
@@ -872,8 +876,8 @@ msgid "<0>Events:</0> All"
 msgstr "<0>Zdarzenia:</0> Wszystkie"
 
 #: packages/ui/components/document/document-visibility-select.tsx
-msgid "<0>Everyone</0> - Everyone can access and view the document"
-msgstr "<0>Wszyscy</0> – Każdy może uzyskać dostęp do dokumentu i go wyświetlić"
+msgid "<0>Everyone</0> - Visible to you and all team members."
+msgstr ""
 
 #: apps/remix/app/routes/_unauthenticated+/organisation.sso.confirmation.$token.tsx
 msgid "<0>Full account access:</0> View all your profile information, settings, and activity"
@@ -884,8 +888,8 @@ msgid "<0>Inherit authentication method</0> - Use the global action signing auth
 msgstr "<0>Odziedzicz metodę uwierzytelniania</0> – Użyj metody uwierzytelniania skonfigurowanej w domyślnych ustawieniach"
 
 #: packages/ui/components/document/document-visibility-select.tsx
-msgid "<0>Managers and above</0> - Only managers and above can access and view the document"
-msgstr "<0>Managerowie i wyżej</0> – Tylko managerowie i wyżej mogą uzyskać dostęp do dokumentu"
+msgid "<0>Managers and above</0> - Visible to you and team managers and admins."
+msgstr ""
 
 #: packages/ui/components/document/document-global-auth-action-select.tsx
 msgid "<0>No restrictions</0> - No authentication required"
@@ -3015,6 +3019,10 @@ msgstr "Wybierz metodę dystrybucji dokumentu do odbiorców. Opcja „Adres e-ma
 msgid "Choose verification method"
 msgstr "Wybierz metodę weryfikacji"
 
+#: apps/remix/app/components/forms/email-preferences-form.tsx
+msgid "Choose Yes to show the individual sender's name alongside the team name in signing invitations. Choose No to show only the team name."
+msgstr ""
+
 #: apps/remix/app/components/general/document-signing/document-signing-auth-dialog.tsx
 msgid "Choose your preferred authentication method:"
 msgstr "Wybierz metodę uwierzytelniania:"
@@ -3456,10 +3464,6 @@ msgstr "Wybierz domyślny język przesłanego dokumentu, który będzie używany
 msgid "Controls the default visibility of an uploaded document."
 msgstr "Wybierz domyślną widoczność przesłanego dokumentu."
 
-#: apps/remix/app/components/forms/email-preferences-form.tsx
-msgid "Controls the formatting of the message that will be sent when inviting a recipient to sign a document. If a custom message has been provided while configuring the document, it will be used instead."
-msgstr "Wiadomość, która zostanie wysłana do odbiorcy z zaproszeniem do podpisania dokumentu. Jeśli podczas konfigurowania dokumentu podano niestandardową wiadomość, zostanie ona użyta zamiast domyślnej."
-
 #: apps/remix/app/components/general/envelope-editor/envelope-editor-settings-dialog.tsx
 #: packages/ui/primitives/document-flow/add-settings.tsx
 msgid "Controls the language for the document, including the language to be used for email notifications, and the final certificate that is generated and attached to the document."
@@ -3480,6 +3484,10 @@ msgstr "Wybierz, czy certyfikat podpisu ma zostać dołączony do dokumentu podc
 #: apps/remix/app/components/forms/document-preferences-form.tsx
 msgid "Controls which signatures are allowed to be used when signing a document."
 msgstr "Wybierz dozwolone podpisy podczas podpisywania dokumentu."
+
+#: packages/ui/components/document/document-visibility-select.tsx
+msgid "Controls which team members can view and access this document. The document owner and assigned recipients will always have access."
+msgstr ""
 
 #: apps/remix/app/components/general/document/document-recipient-link-copy-dialog.tsx
 #: packages/ui/primitives/document-flow/add-subject.tsx
@@ -6015,6 +6023,10 @@ msgstr "Wszyscy podpisali"
 msgid "Everyone has signed! You will receive an email copy of the signed document."
 msgstr "Wszyscy podpisali! Otrzymasz wiadomość z podpisanym dokumentem."
 
+#: packages/ui/components/document/document-visibility-select.tsx
+msgid "Examples"
+msgstr ""
+
 #: apps/remix/app/components/general/organisation-usage-panel.tsx
 msgid "Exceeded"
 msgstr "Przekroczono"
@@ -6358,6 +6370,10 @@ msgstr "Ustawienia folderu"
 msgid "Folder updated successfully"
 msgstr "Folder został zaktualizowany"
 
+#: apps/remix/app/components/forms/editor/editor-field-initials-form.tsx
+msgid "Font Family"
+msgstr ""
+
 #: apps/remix/app/components/forms/editor/editor-field-generic-field-forms.tsx
 #: packages/ui/primitives/document-flow/field-items-advanced-settings/date-field.tsx
 #: packages/ui/primitives/document-flow/field-items-advanced-settings/email-field.tsx
@@ -6614,6 +6630,10 @@ msgstr "Nazwa grupy"
 msgid "Groups"
 msgstr "Grupy"
 
+#: apps/remix/app/components/forms/editor/editor-field-initials-form.tsx
+msgid "Handwriting"
+msgstr ""
+
 #: apps/remix/app/components/general/envelope-editor/recipient-step-list.tsx
 #: packages/ui/primitives/document-flow/add-signers.tsx
 #: packages/ui/primitives/document-flow/add-signers.tsx
@@ -6816,6 +6836,10 @@ msgstr "Identyfikowanie pól formularzy"
 msgid "Identifying recipients"
 msgstr "Identyfikowanie odbiorców"
 
+#: apps/remix/app/components/forms/email-preferences-form.tsx
+msgid "If a custom message has been provided while configuring the document, it replaces the default body text, but the heading still follows this setting."
+msgstr ""
+
 #: apps/remix/app/components/general/organisations/organisation-billing-banner.tsx
 #: apps/remix/app/components/general/organisations/organisation-billing-banner.tsx
 msgid "If there is any issue with your subscription, please contact us at <0>{SUPPORT_EMAIL}</0>."
@@ -6916,6 +6940,10 @@ msgstr "Dołącz odbiorców"
 #: apps/remix/app/components/general/admin-global-settings-section.tsx
 msgid "Include sender details"
 msgstr "Dołącz dane nadawcy"
+
+#: apps/remix/app/components/forms/email-preferences-form.tsx
+msgid "Include Sender Details"
+msgstr ""
 
 #: apps/remix/app/components/general/admin-global-settings-section.tsx
 msgid "Include signing certificate"
@@ -9895,6 +9923,7 @@ msgstr "Przypomnienia"
 #: apps/remix/app/components/dialogs/admin-organisation-member-delete-dialog.tsx
 #: apps/remix/app/components/dialogs/admin-recipient-delete-dialog.tsx
 #: apps/remix/app/components/dialogs/admin-team-member-delete-dialog.tsx
+#: apps/remix/app/components/dialogs/sign-field-text-dialog.tsx
 #: apps/remix/app/components/dialogs/team-email-delete-dialog.tsx
 #: apps/remix/app/components/dialogs/team-member-delete-dialog.tsx
 #: apps/remix/app/components/dialogs/template-bulk-send-dialog.tsx
@@ -10291,6 +10320,11 @@ msgstr ""
 msgid "Rows per page"
 msgstr "Wiersze na stronę"
 
+#: apps/remix/app/components/forms/editor/editor-field-initials-form.tsx
+msgid "Sans-Serif"
+msgstr ""
+
+#: apps/remix/app/components/dialogs/sign-field-text-dialog.tsx
 #: apps/remix/app/components/dialogs/template-direct-link-dialog.tsx
 #: apps/remix/app/components/embed/authoring/configure-fields-view.tsx
 #: apps/remix/app/components/embed/authoring/configure-fields-view.tsx
@@ -10563,6 +10597,10 @@ msgstr "Wybierz domyślną rolę"
 msgid "Select direction"
 msgstr "Wybierz kierunek"
 
+#: apps/remix/app/components/forms/editor/editor-field-initials-form.tsx
+msgid "Select font family"
+msgstr ""
+
 #: apps/remix/app/components/general/organisation-groups-multiselect-combobox.tsx
 #: apps/remix/app/components/general/organisation-groups-multiselect-combobox.tsx
 msgid "Select groups"
@@ -10741,10 +10779,6 @@ msgstr "Wyślij kopertę"
 #: packages/ui/components/document/reminder-settings-picker.tsx
 msgid "Send first reminder after"
 msgstr "Wyślij pierwsze przypomnienie po"
-
-#: apps/remix/app/components/forms/email-preferences-form.tsx
-msgid "Send on Behalf of Team"
-msgstr "Wyślij w imieniu zespołu"
 
 #: packages/ui/components/document/document-email-checkboxes.tsx
 msgid "Send recipient expired email to the owner"
@@ -12249,6 +12283,12 @@ msgstr "Dokument jest już zapisany i nie można go zmienić."
 msgid "The document name will use the most recently uploaded file name without its extension."
 msgstr ""
 
+#: apps/remix/app/components/general/envelope-editor/envelope-editor-settings-dialog.tsx
+#: packages/ui/primitives/document-flow/add-settings.tsx
+#: packages/ui/primitives/template-flow/add-template-settings.tsx
+msgid "The document owner and assigned recipients will always have access."
+msgstr ""
+
 #: packages/email/template-components/template-document-rejection-confirmed.tsx
 msgid "The document owner has been notified of this rejection. No further action is required from you at this time. The document owner may contact you with any questions regarding this rejection."
 msgstr "Właściciel został poinformowany o odrzuceniu dokumentu. Może się z Tobą skontaktować, jeśli będzie to konieczne. Nie musisz nic więcej robić."
@@ -12617,10 +12657,6 @@ msgstr "Użytkownik, którego szukasz, mógł zostać usunięty, zmieniony lub m
 #: apps/remix/app/components/dialogs/admin-user-reset-two-factor-dialog.tsx
 msgid "The user's two factor authentication has been reset successfully."
 msgstr "Weryfikacja dwuetapowa została zresetowana."
-
-#: packages/ui/components/document/document-visibility-select.tsx
-msgid "The visibility of the document to the recipient."
-msgstr "Widoczność dokumentu dla odbiorcy."
 
 #: apps/remix/app/components/dialogs/webhook-delete-dialog.tsx
 msgid "The webhook has been successfully deleted."

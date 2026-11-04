@@ -42,10 +42,11 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          src: cMapsDir,
-          dest: 'static',
+          src: `${cMapsDir}/*`,
+          dest: 'static/cmaps',
         },
       ],
+      silent: true,
     }),
     reactRouter(),
     macrosPlugin(),
