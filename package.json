@@ -9,6 +9,7 @@
   "scripts": {
     "postinstall": "patch-package",
     "build": "turbo run build",
+    "build:vercel": "turbo run build --filter=@documenso/remix && mkdir -p dist && cp -r apps/remix/build/client/* dist/",
     "dev": "npm run translate:compile && turbo run dev --filter=@documenso/remix",
     "dev:remix": "npm run translate:compile && turbo run dev --filter=@documenso/remix",
     "dev:docs": "turbo run dev --filter=@documenso/docs",

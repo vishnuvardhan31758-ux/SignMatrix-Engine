@@ -1,4 +1,4 @@
 {
-  "buildCommand": "npx turbo run build --filter=@documenso/remix",
-  "outputDirectory": "apps/remix/build/client"
+  "buildCommand": "npm run build:vercel",
+  "outputDirectory": "dist"
 }
