@@ -1,0 +1,536 @@
+import { getOptionalSession } from '@documenso/auth/server/lib/utils/get-session';
+import { assertEmbedCscServiceSession } from '@documenso/ee/server-only/signing/csc/assert-embed-service-session';
+import { EnvelopeRenderProvider } from '@documenso/lib/client-only/providers/envelope-render-provider';
+import { IS_BILLING_ENABLED } from '@documenso/lib/constants/app';
+import { AppError, AppErrorCode } from '@documenso/lib/errors/app-error';
+import { captureServerEvent } from '@documenso/lib/server-only/analytics/capture-server-event';
+import { getDocumentAndSenderByToken } from '@documenso/lib/server-only/document/get-document-by-token';
+import { viewedDocument } from '@documenso/lib/server-only/document/viewed-document';
+import { resolveEmbedSignature } from '@documenso/lib/server-only/embedding/resolve-embed-signature';
+import { getEnvelopeForRecipientSigning } from '@documenso/lib/server-only/envelope/get-envelope-for-recipient-signing';
+import { getEnvelopeRequiredAccessData } from '@documenso/lib/server-only/envelope/get-envelope-required-access-data';
+import { getCompletedFieldsForToken } from '@documenso/lib/server-only/field/get-completed-fields-for-token';
+import { getFieldsForToken } from '@documenso/lib/server-only/field/get-fields-for-token';
+import { getOrganisationClaimByTeamId } from '@documenso/lib/server-only/organisation/get-organisation-claims';
+import { getIsRecipientsTurnToSign } from '@documenso/lib/server-only/recipient/get-is-recipient-turn';
+import { getRecipientByToken } from '@documenso/lib/server-only/recipient/get-recipient-by-token';
+import { getRecipientsForAssistant } from '@documenso/lib/server-only/recipient/get-recipients-for-assistant';
+import { assertSenderNotDisabled } from '@documenso/lib/server-only/user/assert-user-not-disabled';
+import { DocumentAccessAuth } from '@documenso/lib/types/document-auth';
+import { fireAndForget } from '@documenso/lib/universal/fire-and-forget';
+import { isDocumentCompleted } from '@documenso/lib/utils/document';
+import { extractDocumentAuthMethods } from '@documenso/lib/utils/document-auth';
+import { isRecipientExpired } from '@documenso/lib/utils/recipients';
+import { prisma } from '@documenso/prisma';
+import { RecipientRole, SigningStatus } from '@prisma/client';
+import { data } from 'react-router';
+import { match } from 'ts-pattern';
+
+import { EmbedSignDocumentV1ClientPage } from '~/components/embed/embed-document-signing-page-v1';
+import { EmbedSignDocumentV2ClientPage } from '~/components/embed/embed-document-signing-page-v2';
+import { DocumentSigningAuthProvider } from '~/components/general/document-signing/document-signing-auth-provider';
+import { DocumentSigningProvider } from '~/components/general/document-signing/document-signing-provider';
+import { EnvelopeSigningProvider } from '~/components/general/document-signing/envelope-signing-provider';
+import { superLoaderJson, useSuperLoaderData } from '~/utils/super-json-loader';
+
+import { getOptionalLoaderContext } from '../../../../server/utils/get-loader-session';
+import type { Route } from './+types/sign.$token';
+
+async function handleV1Loader({ params, request }: Route.LoaderArgs) {
+  const { requestMetadata } = getOptionalLoaderContext();
+
+  const { searchParams } = new URL(request.url);
+
+  if (!params.token) {
+    throw new Response('Not found', { status: 404 });
+  }
+
+  const token = params.token;
+
+  const { user } = await getOptionalSession(request);
+
+  const [document, fields, recipient, completedFields] = await Promise.all([
+    getDocumentAndSenderByToken({
+      token,
+      userId: user?.id,
+      requireAccessAuth: false,
+    }).catch(() => null),
+    getFieldsForToken({ token }),
+    getRecipientByToken({ token }).catch(() => null),
+    getCompletedFieldsForToken({ token }).catch(() => []),
+  ]);
+
+  // `document.directLink` is always available but we're doing this to
+  // satisfy the type checker.
+  if (!document || !recipient) {
+    throw new Response('Not found', { status: 404 });
+  }
+
+  const organisationClaim = await getOrganisationClaimByTeamId({ teamId: document.teamId });
+
+  const allowEmbedSigningWhitelabel = organisationClaim.flags.embedSigningWhiteLabel;
+  const hidePoweredBy = organisationClaim.flags.hidePoweredBy;
+
+  // TODO: Make this more robust, we need to ensure the owner is either
+  // TODO: the member of a team that has an active subscription, is an early
+  // TODO: adopter or is an enterprise user.
+  if (IS_BILLING_ENABLED() && !organisationClaim.flags.embedSigning) {
+    throw data(
+      {
+        type: 'embed-paywall',
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
+  const isCompleted = recipient.signingStatus === SigningStatus.SIGNED || isDocumentCompleted(document.status);
+  const isRejected = recipient.signingStatus === SigningStatus.REJECTED;
+  const hasRecipientActioned = isCompleted || isRejected;
+
+  if (!hasRecipientActioned && isRecipientExpired(recipient)) {
+    throw data(
+      {
+        type: 'embed-recipient-expired',
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
+  const { derivedRecipientAccessAuth } = extractDocumentAuthMethods({
+    documentAuth: document.authOptions,
+  });
+
+  const isAccessAuthValid = derivedRecipientAccessAuth.every((accesssAuth) =>
+    match(accesssAuth)
+      .with(DocumentAccessAuth.ACCOUNT, () => user && user.email === recipient.email)
+      .with(DocumentAccessAuth.TWO_FACTOR_AUTH, () => true) // Allow without account requirement
+      .exhaustive(),
+  );
+
+  if (!isAccessAuthValid) {
+    throw data(
+      {
+        type: 'embed-authentication-required',
+        email: recipient.email,
+      },
+      {
+        status: 401,
+      },
+    );
+  }
+
+  const isRecipientsTurnToSign = hasRecipientActioned || (await getIsRecipientsTurnToSign({ token }));
+
+  if (!isRecipientsTurnToSign) {
+    throw data(
+      {
+        type: 'embed-waiting-for-turn',
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
+  await viewedDocument({
+    token,
+    requestMetadata,
+    recipientAccessAuth: derivedRecipientAccessAuth,
+  });
+
+  await assertEmbedCscServiceSession({ request, token, envelope: document, isCompleted, isRejected });
+
+  const allRecipients =
+    recipient.role === RecipientRole.ASSISTANT
+      ? await getRecipientsForAssistant({
+          token,
+        })
+      : [];
+
+  let clientUserId: string | null = null;
+  let persistedSignature: string | null = null;
+
+  if (!hasRecipientActioned) {
+    const resolved = await resolveEmbedSignature({
+      clientUserId: searchParams.get('clientUserId'),
+      teamId: document.teamId,
+      recipientEmail: recipient.email,
+      claimFlags: organisationClaim.flags,
+    });
+
+    clientUserId = resolved?.clientUserId ?? null;
+    persistedSignature = resolved?.persistedSignature ?? null;
+  }
+
+  fireAndForget(async () => {
+    const team = await prisma.team.findFirst({
+      where: {
+        id: document.teamId,
+      },
+      select: {
+        organisationId: true,
+      },
+    });
+
+    captureServerEvent({
+      event: 'App: Embed Session Started',
+      userId: user?.id,
+      organisationId: team?.organisationId,
+      teamId: document.teamId,
+      properties: {
+        type: 'signing',
+        version: 'v0',
+        recipientId: recipient.id,
+        envelopeId: document.envelopeId,
+      },
+    });
+  });
+
+  return {
+    token,
+    user,
+    document,
+    allRecipients,
+    recipient,
+    fields,
+    completedFields,
+    isCompleted,
+    isRejected,
+    hidePoweredBy,
+    allowEmbedSigningWhitelabel,
+    clientUserId,
+    persistedSignature,
+  };
+}
+
+async function handleV2Loader({ params, request }: Route.LoaderArgs) {
+  const { requestMetadata } = getOptionalLoaderContext();
+
+  const { searchParams } = new URL(request.url);
+
+  if (!params.token) {
+    throw new Response('Not found', { status: 404 });
+  }
+
+  const token = params.token;
+
+  const { user } = await getOptionalSession(request);
+
+  const envelopeForSigning = await getEnvelopeForRecipientSigning({
+    token,
+    userId: user?.id,
+  })
+    .then((envelopeForSigning) => {
+      return {
+        isDocumentAccessValid: true,
+        ...envelopeForSigning,
+      } as const;
+    })
+    .catch(async (e) => {
+      const error = AppError.parseError(e);
+
+      if (error.code === AppErrorCode.UNAUTHORIZED) {
+        const requiredAccessData = await getEnvelopeRequiredAccessData({ token });
+
+        return {
+          isDocumentAccessValid: false,
+          ...requiredAccessData,
+        } as const;
+      }
+
+      throw new Response('Not Found', { status: 404 });
+    });
+
+  if (!envelopeForSigning.isDocumentAccessValid) {
+    throw data(
+      {
+        type: 'embed-authentication-required',
+        email: envelopeForSigning.recipientEmail,
+      },
+      {
+        status: 401,
+      },
+    );
+  }
+
+  const { envelope, recipient, isRecipientsTurn, isExpired, isCompleted, isRejected } = envelopeForSigning;
+
+  const organisationClaim = await getOrganisationClaimByTeamId({ teamId: envelope.teamId });
+
+  const allowEmbedSigningWhitelabel = organisationClaim.flags.embedSigningWhiteLabel;
+  const hidePoweredBy = organisationClaim.flags.hidePoweredBy;
+
+  if (IS_BILLING_ENABLED() && !organisationClaim.flags.embedSigning) {
+    throw data(
+      {
+        type: 'embed-paywall',
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
+  if (isExpired) {
+    throw data(
+      {
+        type: 'embed-recipient-expired',
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
+  if (!isRecipientsTurn) {
+    throw data(
+      {
+        type: 'embed-waiting-for-turn',
+      },
+      {
+        status: 403,
+      },
+    );
+  }
+
+  const { derivedRecipientAccessAuth } = extractDocumentAuthMethods({
+    documentAuth: envelope.authOptions,
+    recipientAuth: recipient.authOptions,
+  });
+
+  const isAccessAuthValid = derivedRecipientAccessAuth.every((accesssAuth) =>
+    match(accesssAuth)
+      .with(DocumentAccessAuth.ACCOUNT, () => user && user.email === recipient.email)
+      .with(DocumentAccessAuth.TWO_FACTOR_AUTH, () => true)
+      .exhaustive(),
+  );
+
+  if (!isAccessAuthValid) {
+    throw data(
+      {
+        type: 'embed-authentication-required',
+        email: recipient.email,
+      },
+      {
+        status: 401,
+      },
+    );
+  }
+
+  await viewedDocument({
+    token,
+    requestMetadata,
+    recipientAccessAuth: derivedRecipientAccessAuth,
+  }).catch(() => null);
+
+  await assertEmbedCscServiceSession({ request, token, envelope, isCompleted, isRejected });
+
+  let clientUserId: string | null = null;
+  let persistedSignature: string | null = null;
+
+  if (!isCompleted && !isRejected) {
+    const resolved = await resolveEmbedSignature({
+      clientUserId: searchParams.get('clientUserId'),
+      teamId: envelope.teamId,
+      recipientEmail: recipient.email,
+      claimFlags: organisationClaim.flags,
+    });
+
+    clientUserId = resolved?.clientUserId ?? null;
+    persistedSignature = resolved?.persistedSignature ?? null;
+  }
+
+  fireAndForget(async () => {
+    const team = await prisma.team.findFirst({
+      where: {
+        id: envelope.teamId,
+      },
+      select: {
+        organisationId: true,
+      },
+    });
+
+    captureServerEvent({
+      event: 'App: Embed Session Started',
+      userId: user?.id,
+      organisationId: team?.organisationId,
+      teamId: envelope.teamId,
+      properties: {
+        type: 'signing',
+        version: 'v0',
+        recipientId: recipient.id,
+        envelopeId: envelope.id,
+      },
+    });
+  });
+
+  return {
+    token,
+    user,
+    envelopeForSigning,
+    hidePoweredBy,
+    allowEmbedSigningWhitelabel,
+    clientUserId,
+    persistedSignature,
+  };
+}
+
+export async function loader(loaderArgs: Route.LoaderArgs) {
+  const { token } = loaderArgs.params;
+
+  if (!token) {
+    throw new Response('Not Found', { status: 404 });
+  }
+
+  // Not efficient but works for now until we remove v1.
+  const foundRecipient = await prisma.recipient.findFirst({
+    where: {
+      token,
+    },
+    select: {
+      envelope: {
+        select: {
+          internalVersion: true,
+          userId: true,
+        },
+      },
+    },
+  });
+
+  if (!foundRecipient) {
+    throw new Response('Not Found', { status: 404 });
+  }
+
+  try {
+    await assertSenderNotDisabled({ userId: foundRecipient.envelope.userId });
+  } catch (e) {
+    if (AppError.parseError(e).code === AppErrorCode.SENDER_DISABLED) {
+      throw data(
+        {
+          type: 'embed-sender-disabled',
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+    throw e;
+  }
+
+  if (foundRecipient.envelope.internalVersion === 2) {
+    const payloadV2 = await handleV2Loader(loaderArgs);
+
+    return superLoaderJson({
+      version: 2,
+      payload: payloadV2,
+    } as const);
+  }
+
+  const payloadV1 = await handleV1Loader(loaderArgs);
+
+  return superLoaderJson({
+    version: 1,
+    payload: payloadV1,
+  } as const);
+}
+
+export default function EmbedSignDocumentPage() {
+  const { version, payload } = useSuperLoaderData<typeof loader>();
+
+  if (version === 1) {
+    return <EmbedSignDocumentPageV1 data={payload} />;
+  }
+
+  return <EmbedSignDocumentPageV2 data={payload} />;
+}
+
+const EmbedSignDocumentPageV1 = ({ data }: { data: Awaited<ReturnType<typeof handleV1Loader>> }) => {
+  const {
+    token,
+    user,
+    document,
+    allRecipients,
+    recipient,
+    fields,
+    completedFields,
+    isCompleted,
+    isRejected,
+    hidePoweredBy,
+    allowEmbedSigningWhitelabel,
+    clientUserId,
+    persistedSignature,
+  } = data;
+
+  return (
+    <DocumentSigningProvider
+      email={recipient.email}
+      fullName={user?.email === recipient.email ? user?.name : recipient.name}
+      signature={(user?.email === recipient.email ? user?.signature : undefined) || persistedSignature || undefined}
+      typedSignatureEnabled={document.documentMeta?.typedSignatureEnabled}
+      uploadSignatureEnabled={document.documentMeta?.uploadSignatureEnabled}
+      drawSignatureEnabled={document.documentMeta?.drawSignatureEnabled}
+    >
+      <DocumentSigningAuthProvider documentAuthOptions={document.authOptions} recipient={recipient} user={user}>
+        <EmbedSignDocumentV1ClientPage
+          token={token}
+          documentId={document.id}
+          envelopeId={document.envelopeId}
+          envelopeItems={document.envelopeItems}
+          recipient={recipient}
+          fields={fields}
+          completedFields={completedFields}
+          metadata={document.documentMeta}
+          isCompleted={isCompleted}
+          isRejected={isRejected}
+          hidePoweredBy={hidePoweredBy}
+          allowWhitelabelling={allowEmbedSigningWhitelabel}
+          allRecipients={allRecipients}
+          clientUserId={clientUserId}
+        />
+      </DocumentSigningAuthProvider>
+    </DocumentSigningProvider>
+  );
+};
+
+const EmbedSignDocumentPageV2 = ({ data }: { data: Awaited<ReturnType<typeof handleV2Loader>> }) => {
+  const {
+    token,
+    user,
+    envelopeForSigning,
+    hidePoweredBy,
+    allowEmbedSigningWhitelabel,
+    clientUserId,
+    persistedSignature,
+  } = data;
+
+  const { envelope, recipient } = envelopeForSigning;
+
+  return (
+    <EnvelopeSigningProvider
+      envelopeData={envelopeForSigning}
+      email={recipient.email}
+      fullName={user?.email === recipient.email ? user?.name : recipient.name}
+      signature={(user?.email === recipient.email ? user?.signature : undefined) || persistedSignature || undefined}
+    >
+      <DocumentSigningAuthProvider documentAuthOptions={envelope.authOptions} recipient={recipient} user={user}>
+        <EnvelopeRenderProvider
+          version="current"
+          envelope={envelope}
+          envelopeItems={envelope.envelopeItems}
+          token={token}
+        >
+          <EmbedSignDocumentV2ClientPage
+            hidePoweredBy={hidePoweredBy}
+            allowWhitelabelling={allowEmbedSigningWhitelabel}
+            clientUserId={clientUserId}
+          />
+        </EnvelopeRenderProvider>
+      </DocumentSigningAuthProvider>
+    </EnvelopeSigningProvider>
+  );
+};
