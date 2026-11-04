@@ -173,7 +173,11 @@ void LicenseClient.start();
 // No-op for Inngest provider which handles cron externally.
 jobsClient.startCron();
 
-void migrateDeletedAccountServiceAccount();
-void migrateLegacyServiceAccount();
+void migrateDeletedAccountServiceAccount().catch((err) =>
+  console.warn('Skipping deleted account migration:', err?.message || err),
+);
+void migrateLegacyServiceAccount().catch((err) =>
+  console.warn('Skipping legacy service account migration:', err?.message || err),
+);
 
 export default app;
