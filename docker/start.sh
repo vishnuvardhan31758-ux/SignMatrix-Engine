@@ -30,5 +30,8 @@ export NEXT_PRIVATE_DIRECT_DATABASE_URL="${NEXT_PRIVATE_DIRECT_DATABASE_URL:-$NE
 printf "🗄️  Running database migrations...\n"
 npx prisma migrate deploy --schema ../../packages/prisma/schema.prisma
 
+printf "🌱 Checking / running database seed...\n"
+node seed-production.cjs || true
+
 printf "🌟 Starting Documenso server...\n"
 HOSTNAME=0.0.0.0 node build/server/main.js

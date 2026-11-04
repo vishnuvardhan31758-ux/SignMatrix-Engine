@@ -146,8 +146,9 @@ RUN npx prisma generate --schema ./packages/prisma/schema.prisma --generator cli
     && npm cache clean --force
 
 
-# Get the start script from docker/
+# Get the start script and production seed from docker/
 COPY --chown=nodejs:nodejs ./docker/start.sh /app/apps/remix/start.sh
+COPY --chown=nodejs:nodejs ./docker/seed-production.cjs /app/apps/remix/seed-production.cjs
 
 WORKDIR /app/apps/remix
 
